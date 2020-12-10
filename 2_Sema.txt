@@ -1,0 +1,94 @@
+#include<stdio.h>
+#include<stdlib.h>
+#include<unistd.h>
+#include<fcntl.h>
+#include<errno.h>
+#include<pthread.h>
+#include<semaphore.h>
+#include<wiringPi.h>
+#include<time.h>
+
+#define NUM_THREADS 2
+#define Yellow     0
+#define Green     1
+
+sem_t mutex1, mutex2;
+struct timeval tt1,tt2;
+long  difference;
+
+
+pthread_t thread_array[NUM_THREADS];
+
+ //.............................................1...........................................
+
+void *conveyorBelt(void *arg)
+{
+    while (1)
+        {
+        gettimeofday(&tt1, NULL);
+        sleep(2); 
+        sem_post(&mutex1);
+        sem_wait(&mutex2);
+	digitalWrite (Yellow, HIGH) ;  // On
+        delay (1000) ;               // mS
+        digitalWrite (Yellow, LOW) ;   // Off
+        //printf("Yellow LED \n");
+        sleep(1);
+        }
+        pthread_exit(NULL);
+}
+
+  //......................................................2...................................
+
+void *Capping(void *arg)
+{
+        sleep (1);
+        while (1)
+        {
+        sem_wait(&mutex1);
+        gettimeofday(&tt2, NULL);
+        difference = ((tt2.tv_sec - tt1.tv_sec)*1000000) + (tt2.tv_usec - tt1.tv_usec);
+        printf("Time difference in seconds/microseconds = %ld \n",difference);
+        printf("Bottle reached, and waiting to be capped. \n");
+	digitalWrite (Green, HIGH) ;  // On
+        delay (1000) ;               // mS
+        digitalWrite (Green, LOW) ;   // Off
+        //printf("Green LED \n");
+        sleep (3);
+        printf("Bottle Capped. \n");
+        sem_post(&mutex2);
+        }
+        pthread_exit(NULL);
+}
+ //....................................................main........................................
+
+int main(int argc, char *argv[])
+{
+	wiringPiSetup () ;
+	pinMode (Yellow, OUTPUT) ;
+	pinMode (Green, OUTPUT) ;
+        int iter, i;
+        sem_init(&mutex1, 0, 0);
+        sem_init(&mutex2, 0, 0);
+        if (pthread_create(&thread_array[0], NULL, conveyorBelt, (void *)0))
+        {
+                printf("Error creating thread");
+                exit(-1);
+        }
+        if (pthread_create(&thread_array[1], NULL, Capping, (void *)1))
+        {
+                printf("Error creating thread");
+                exit(-1);
+        }
+        for(iter=0; iter<NUM_THREADS ; iter++)
+        {
+                if (pthread_join(thread_array[iter], NULL))
+                {
+                        printf("Error joining thread");
+                        exit(-1);
+                }
+        }
+
+                        printf("All threads completed.\n\n");
+        return 0;
+}
